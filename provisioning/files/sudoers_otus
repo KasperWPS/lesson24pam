@@ -1,0 +1,5 @@
+Cmnd_Alias HANDLE_DOCKER = \
+    /bin/systemctl restart docker, \
+    /bin/systemctl restart docker.service
+
+otus ALL = (root) NOPASSWD: HANDLE_DOCKER

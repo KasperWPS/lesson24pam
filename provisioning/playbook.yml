@@ -1,0 +1,136 @@
+---
+- hosts: all
+  become: true
+  gather_facts: false
+
+  tasks:
+  - name: Accept login with password from sshd
+    ansible.builtin.lineinfile:
+      path: /etc/ssh/sshd_config
+      regexp: '^PasswordAuthentication no$'
+      line: 'PasswordAuthentication yes'
+      state: present
+    notify:
+      - Restart sshd
+
+  - name: Set timezone
+    community.general.timezone:
+      name: Europe/Moscow
+
+  - name: Add users
+    ansible.builtin.user:
+      name: "{{ item }}"
+      password: "$1$dysHdksd$TNBJ6Qmbld4UX8qFqi5z5." # openssl passwd -salt "dysHdksd" -1 "Otus2023!"
+      state: present
+    loop:
+      - otusadm
+      - otus
+
+  - name: Add group "admin"
+    ansible.builtin.group:
+      name: admin
+      state: present
+
+  - name: Add users to group "admin"
+    ansible.builtin.user:
+      name: "{{ item }}"
+      groups: admin
+      append: true
+    loop:
+      - otusadm
+      - root
+      - vagrant
+
+  - name: Copy pam script
+    ansible.builtin.copy:
+      src: ./files/login.sh
+      dest: /usr/local/bin
+      owner: root
+      group: root
+      mode: '0750'
+
+  - name: Insert plugin PAM (/etc/pam.d/sshd)
+    ansible.builtin.lineinfile:
+      path: /etc/pam.d/sshd
+      insertafter: '^auth.*postlogin$'
+      line: 'auth       required     pam_exec.so /usr/local/bin/login.sh'
+
+  handlers:
+  - name: Restart sshd
+    service:
+      name: sshd
+      state: restarted
+
+- hosts: docker
+  become: true
+  gather_facts: false
+
+  tasks:
+
+  - name: List all files in directory /etc/yum.repos.d/*.repo
+    find:
+      paths: "/etc/yum.repos.d/"
+      patterns: "*.repo"
+    register: repos
+
+  - name: Comment mirrorlist /etc/yum.repos.d/CentOS-*
+    ansible.builtin.lineinfile:
+      backrefs: true
+      path: "{{ item.path }}"
+      regexp: '^(mirrorlist=.+)'
+      line: '#\1'
+    with_items: "{{ repos.files }}"
+
+  - name: Replace baseurl
+    ansible.builtin.lineinfile:
+      backrefs: true
+      path: "{{ item.path }}"
+      regexp: '^#baseurl=http:\/\/mirror.centos.org(.+)'
+      line: 'baseurl=http://vault.centos.org\1'
+    with_items: "{{ repos.files }}"
+
+  - name: Install yum-utils
+    ansible.builtin.yum:
+      name: yum-utils
+      state: present
+
+  - name: Add Docker repository
+    shell: yum-config-manager --add-repo=https://download.docker.com/linux/centos/docker-ce.repo
+    args:
+      creates: /etc/yum.repos.d/docker-ce.repo
+
+  - name: Install docker packages
+    ansible.builtin.yum:
+      name:
+        - docker-ce
+        - docker-ce-cli
+        - containerd.io
+        - docker-buildx-plugin
+        - docker-compose-plugin
+      state: present
+    notify: Up docker service
+
+  - name: Add users to group "docker"
+    ansible.builtin.user:
+      name: "{{ item }}"
+      groups: docker
+      append: true
+    loop:
+      - otus
+      - vagrant
+
+  - name: Copy sudo config for accept user "otus" restart service docker
+    ansible.builtin.copy:
+      src: ./files/sudoers_otus
+      dest: /etc/sudoers.d/otus
+      owner: root
+      group: root
+      mode: '0640'
+
+  handlers:
+  - name: Up docker service
+    ansible.builtin.service:
+      name: docker
+      enabled: true
+      state: started
+

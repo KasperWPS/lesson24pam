@@ -1,0 +1,21 @@
+[
+	{
+		"name": "pam",
+		"cpus": 2,
+		"gui": false,
+		"box": "centos/8",
+		"ip_addr": "192.168.57.10",
+		"memory": "1024",
+		"no_share": true
+	},
+	{
+		"name": "docker",
+		"cpus": 2,
+		"gui": false,
+		"box": "centos/8",
+		"ip_addr": "192.168.57.11",
+		"memory": 1024,
+		"no_share": true
+	}
+]
+
